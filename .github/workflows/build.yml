@@ -3,8 +3,6 @@ name: Build EXE
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -14,6 +12,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: List all files
+      run: |
+        ls -R
+
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
@@ -22,15 +24,24 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        if (Test-Path "requirements.txt") { pip install -r requirements.txt }
         pip install pyinstaller
 
-    - name: Build EXE
+    - name: Build EXE (try different main files)
       run: |
-        pyinstaller --onefile --windowed KoboldAI.py
+        if (Test-Path "koboldai.py") {
+          pyinstaller --onefile --windowed koboldai.py
+        } elseif (Test-Path "KoboldAI.py") {
+          pyinstaller --onefile --windowed KoboldAI.py
+        } elseif (Test-Path "main.py") {
+          pyinstaller --onefile --windowed main.py
+        } else {
+          echo "No main Python file found!"
+          exit 1
+        }
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: koboldai-client-exe
-        path: dist/KoboldAI.exe
+        name: KoboldAI-EXE
+        path: dist/*.exe
