@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: List all files
+    - name: List all files (debug)
       run: |
         ls -R
 
@@ -27,14 +27,13 @@ jobs:
         if (Test-Path "requirements.txt") { pip install -r requirements.txt }
         pip install pyinstaller
 
-    - name: Build EXE (try different main files)
+    - name: Find main file and build EXE
       run: |
-        if (Test-Path "koboldai.py") {
-          pyinstaller --onefile --windowed koboldai.py
-        } elseif (Test-Path "KoboldAI.py") {
-          pyinstaller --onefile --windowed KoboldAI.py
-        } elseif (Test-Path "main.py") {
-          pyinstaller --onefile --windowed main.py
+        $file = Get-ChildItem -Recurse -Include aiserver.py,koboldai.py,main.py | Select-Object -First 1
+
+        if ($file) {
+          echo "Found main file: $($file.FullName)"
+          pyinstaller --onedir --windowed $file.FullName
         } else {
           echo "No main Python file found!"
           exit 1
@@ -44,4 +43,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: KoboldAI-EXE
-        path: dist/*.exe
+        path: dist/
