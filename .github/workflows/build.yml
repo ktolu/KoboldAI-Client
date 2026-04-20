@@ -1,8 +1,6 @@
-name: Build EXE
+name: Build Portable KoboldAI
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -10,9 +8,11 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-    - name: List all files (debug)
+    - name: List files (debug)
+      shell: powershell
       run: |
         ls -R
 
@@ -22,25 +22,73 @@ jobs:
         python-version: '3.10'
 
     - name: Install dependencies
+      shell: powershell
       run: |
         python -m pip install --upgrade pip
-        if (Test-Path "requirements.txt") { pip install -r requirements.txt }
+        if (Test-Path "requirements.txt") {
+          pip install -r requirements.txt
+        }
         pip install pyinstaller
 
-    - name: Find main file and build EXE
+    - name: Find main file
+      shell: powershell
       run: |
         $file = Get-ChildItem -Recurse -Include aiserver.py,koboldai.py,main.py | Select-Object -First 1
 
         if ($file) {
+          echo "MAIN_FILE=$($file.FullName)" >> $env:GITHUB_ENV
           echo "Found main file: $($file.FullName)"
-          pyinstaller --onedir --windowed $file.FullName
         } else {
           echo "No main Python file found!"
           exit 1
         }
 
-    - name: Upload Artifact
+    - name: Build portable EXE
+      shell: powershell
+      run: |
+        pyinstaller --onedir --windowed `
+          --name KoboldAI_Portable `
+          --collect-all eventlet `
+          --collect-all flask `
+          --collect-all engineio `
+          --collect-all socketio `
+          --hidden-import=eventlet.hubs.epolls `
+          --hidden-import=eventlet.hubs.selects `
+          --hidden-import=eventlet.support.greendns `
+          $env:MAIN_FILE
+
+    - name: Copy required folders
+      shell: powershell
+      run: |
+        if (Test-Path "models") {
+          Copy-Item -Recurse models dist/KoboldAI_Portable/models
+        }
+        if (Test-Path "static") {
+          Copy-Item -Recurse static dist/KoboldAI_Portable/static
+        }
+        if (Test-Path "templates") {
+          Copy-Item -Recurse templates dist/KoboldAI_Portable/templates
+        }
+
+    - name: Create launcher (bat)
+      shell: powershell
+      run: |
+        $bat = @"
+        @echo off
+        cd /d %~dp0
+        start KoboldAI_Portable.exe
+        timeout /t 5 >nul
+        start http://localhost:5000
+        "@
+        $bat | Out-File -Encoding ASCII dist/KoboldAI_Portable/START.bat
+
+    - name: Zip portable package
+      shell: powershell
+      run: |
+        Compress-Archive -Path dist/KoboldAI_Portable/* -DestinationPath dist/KoboldAI_Portable.zip
+
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: KoboldAI-EXE
-        path: dist/
+        name: KoboldAI-Portable
+        path: dist/KoboldAI_Portable.zip
